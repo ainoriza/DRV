@@ -8,10 +8,10 @@
  */
 const CONFIG = {
   // 1. Tu Web App URL de Apps Script (terminada en /exec)
-  API_URL: "https://script.google.com/macros/s/TU_DEPLOYMENT_ID/exec",
+  API_URL: "43163248778-qri63io046lkhtcj0h3fu6lj0ogpkbid.apps.googleusercontent.com",
 
   // 2. Tu Client ID de Google Cloud (OAuth 2.0)
-  GOOGLE_CLIENT_ID: "TU_CLIENT_ID.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "43163248778-qri63io046lkhtcj0h3fu6lj0ogpkbid.apps.googleusercontent.com",
 
   // 3. (Opcional) Dominio autorizado — dejá vacío si usás GitHub Pages por defecto
   // Ej: "miusuario.github.io"
