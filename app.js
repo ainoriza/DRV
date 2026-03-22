@@ -1,4 +1,4 @@
-/**
+/**+
  * INASE · Gestión de Variedades
  * Frontend SPA — GitHub Pages
  *
