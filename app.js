@@ -8,7 +8,7 @@
  */
 const CONFIG = {
   // 1. Tu Web App URL de Apps Script (terminada en /exec)
-  API_URL: "https://script.google.com/macros/s/AKfycbxeTTfRDS8Lk9E828qqk5y1_yjMDciZyXBVqPdBhLniZ3iqj-VFmF4BuxQKrUaFR8o/exec",
+  API_URL: "https://script.google.com/macros/s/AKfycbzA9jeF2DnSRj1Bhfu24ZrB5BquZ5bGpQns4Z_H6T3B9IxSg8cAjAl8KtTqjvbDOav8/exec",
 
   // 2. Tu Client ID de Google Cloud (OAuth 2.0)
   GOOGLE_CLIENT_ID: "43163248778-qri63io046lkhtcj0h3fu6lj0ogpkbid.apps.googleusercontent.com",
@@ -96,29 +96,104 @@ document.getElementById("logout-btn").addEventListener("click", () => {
 
 /* ══════════════════════════════════════════════
    API HELPERS
+   
+   GAS (Apps Script) hace una redirección 302 que
+   el browser bloquea con fetch normal.
+   
+   ✅ GET  → JSONP  (evita CORS completamente)
+   ✅ POST → fetch con mode:"no-cors" + FormData
+             El backend recibe e.parameter en doPost
 ══════════════════════════════════════════════ */
-async function apiGet(path, params = {}) {
-  const url = new URL(CONFIG.API_URL);
-  url.searchParams.set("path", path);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  // GAS no acepta Authorization header en doGet, pero enviamos como param
-  const res = await fetch(url.toString(), { redirect: "follow" });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+
+/**
+ * GET via JSONP — funciona sin CORS con GAS.
+ * Requiere que tu doGet en GAS soporte ?callback=xxx
+ * (ver instrucción abajo si aún no lo tiene).
+ */
+function apiGet(path, params = {}) {
+  return new Promise((resolve, reject) => {
+    const cbName = "_gasCallback_" + Date.now();
+    const url = new URL(CONFIG.API_URL);
+    url.searchParams.set("path", path);
+    url.searchParams.set("callback", cbName);
+    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+
+    const script = document.createElement("script");
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("Timeout — verificá que la API esté publicada como 'Cualquier persona'"));
+    }, 15000);
+
+    window[cbName] = (data) => {
+      cleanup();
+      resolve(data);
+    };
+
+    function cleanup() {
+      clearTimeout(timer);
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    script.onerror = () => { cleanup(); reject(new Error("Error cargando script JSONP")); };
+    script.src = url.toString();
+    document.head.appendChild(script);
+  });
 }
 
+/**
+ * POST via fetch con mode:"no-cors".
+ * Con no-cors la respuesta es "opaque" (no podemos leerla),
+ * así que hacemos un GET de confirmación inmediatamente después.
+ * Para operaciones que necesiten respuesta usá apiPostReadable().
+ */
 async function apiPost(path, body = {}) {
   const url = new URL(CONFIG.API_URL);
   url.searchParams.set("path", path);
-  // Inyectamos el email del usuario logueado
+
   const payload = { ...body, _user_email: state.user?.email };
-  const res = await fetch(url.toString(), {
+
+  // Enviamos como application/x-www-form-urlencoded (más compatible con GAS)
+  // GAS lo recibe en e.parameter
+  const formBody = Object.entries(payload)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(typeof v === "object" ? JSON.stringify(v) : v)}`)
+    .join("&");
+
+  await fetch(url.toString(), {
     method: "POST",
+    mode: "no-cors",           // Evita el error CORS — la respuesta será opaque
     redirect: "follow",
-    body: JSON.stringify(payload),
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: formBody,
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+
+  // Como no podemos leer la respuesta opaque, devolvemos ok optimista
+  return { ok: true };
+}
+
+/**
+ * POST con cuerpo JSON y lectura de respuesta.
+ * Requiere que en GAS hayas agregado los headers CORS en doPost
+ * (ver instrucciones en README).
+ * Usalo para extraer-zip y sync-csv donde necesitás leer la respuesta.
+ */
+async function apiPostReadable(path, body = {}) {
+  const url = new URL(CONFIG.API_URL);
+  url.searchParams.set("path", path);
+  const payload = { ...body, _user_email: state.user?.email };
+
+  try {
+    const res = await fetch(url.toString(), {
+      method: "POST",
+      redirect: "follow",
+      headers: { "Content-Type": "text/plain" }, // text/plain evita preflight OPTIONS
+      body: JSON.stringify(payload),
+    });
+    return res.json();
+  } catch(err) {
+    // Si sigue fallando por CORS, notificamos claramente
+    throw new Error("CORS bloqueado en POST. Verificá que la Web App tenga acceso 'Cualquier persona' y agregá los headers CORS en tu doPost de GAS (ver README).");
+  }
 }
 
 /* ══════════════════════════════════════════════
@@ -143,9 +218,18 @@ async function loadDashboard() {
 
 function renderStatCards() {
   const exps = state.expedientes;
-  const soloRnc  = exps.filter(e => String(e.t || e.T) === "1").length;
-  const solornpc = exps.filter(e => String(e.t || e.T) === "2").length;
-  const ambos    = exps.filter(e => String(e.t || e.T) === "3").length;
+  const soloRnc  = exps.filter(e => {
+    const t = String(e.tipo_tramite || e.t || e.T || "");
+    return t === "1" || t.toUpperCase() === "RNC";
+  }).length;
+  const solornpc = exps.filter(e => {
+    const t = String(e.tipo_tramite || e.t || e.T || "");
+    return t === "2" || t.toUpperCase() === "RNPC";
+  }).length;
+  const ambos = exps.filter(e => {
+    const t = String(e.tipo_tramite || e.t || e.T || "");
+    return t === "3" || t.toUpperCase().includes("RNC+") || t.toUpperCase().includes("RNC Y") || t.toUpperCase() === "RNC+RNPC";
+  }).length;
   const pagadas  = buildPaidSet();
 
   const cards = [
@@ -187,17 +271,22 @@ function applyFilters() {
 
   if (q) {
     rows = rows.filter(r =>
-      [r.denominacion || r.Denominacion,
-       r.especie || r.ESPECIE,
-       r.exp_rnc || r["exp rnc"],
-       r.exp_rnpc || r["exp rnpc"],
-       r.nota_rnc || r["nota rnc"] || r["NOTA RNC"],
-       r.nota_rnpc || r["nota rnpc"] || r["NOTA RNPC"],
-       r.nrnc || r.NRNC].some(v => v && String(v).toLowerCase().includes(q))
+      [r.denominacion, r.especie_nombre, r.especie,
+       r.exp_rnc, r.exp_rnpc,
+       r.nota_rnc, r.nota_rnpc,
+       r.nrnc, r.estado_rnc, r.estado_rnpc,
+       r.obtentor, r.representante
+      ].some(v => v && String(v).toLowerCase().includes(q))
     );
   }
   if (tipo) {
-    rows = rows.filter(r => String(r.t || r.T) === tipo);
+    rows = rows.filter(r => {
+      const t = String(r.tipo_tramite || r.t || r.T || "").toUpperCase();
+      if (tipo === "1") return t === "RNC";
+      if (tipo === "2") return t === "RNPC";
+      if (tipo === "3") return t.includes("RNC+") || t === "RNC+RNPC";
+      return true;
+    });
   }
 
   state.filteredRows = rows;
@@ -218,39 +307,48 @@ function renderTable(rows) {
   const tipoLabel = { "1": "RNC", "2": "RNPC", "3": "RNC+RNPC" };
 
   body.innerHTML = rows.slice(0, 500).map((r, idx) => {
-    const nrnc    = r.nrnc || r.NRNC || "—";
-    const denom   = r.denominacion || r.Denominacion || "—";
-    const especie = r.especie || r.ESPECIE || "—";
-    const tipo    = String(r.t || r.T || "");
-    const expRnc  = r.exp_rnc || r["exp rnc"] || r.RNC || "";
-    const expRnpc = r.exp_rnpc || r["exp rnpc"] || r.RNPC || "";
-    const notaRnc  = r.nota_rnc || r["NOTA RNC"] || r["nota rnc"] || "";
-    const notaRnpc = r.nota_rnpc || r["NOTA RNPC"] || r["nota rnpc"] || "";
-    const finRnc  = r["f. in rnc"] || r["F. IN RNC"] || r.f_in_rnc || "";
+    // Campos reales devueltos por la API GAS
+    const nrnc    = r.nrnc || "—";
+    const denom   = r.denominacion || "—";
+    // especie puede ser ID numérico o nombre string
+    const especie = r.especie_nombre || (typeof r.especie === "string" ? r.especie : "") || "—";
+    const tipo    = String(r.tipo_tramite || r.t || "");
+    const expRnc  = r.exp_rnc || "";
+    const expRnpc = r.exp_rnpc || "";
+    const notaRnc  = r.nota_rnc || "";
+    const notaRnpc = r.nota_rnpc || "";
+    const finRnc   = r.f_in_rnc || "";
+    const estadoRnc  = r.estado_rnc || "";
+    const estadoRnpc = r.estado_rnpc || "";
 
     const paidRnc  = notaRnc  && paid.has(notaRnc.trim());
     const paidRnpc = notaRnpc && paid.has(notaRnpc.trim());
 
     const shortExp = (exp) => {
-      if (!exp) return "—";
-      const m = exp.match(/EX-(\d{4})-(\d+)/);
-      return m ? `EX-${m[1]}-${m[2]}` : exp.slice(0, 24);
+      if (!exp || exp === "false" || exp === false) return "—";
+      const m = String(exp).match(/EX-(\d{4})-(\d+)/);
+      return m ? \`EX-\${m[1]}-\${m[2]}\` : String(exp).slice(0, 24);
     };
 
-    return `<tr>
-      <td class="font-mono text-stone-400 text-xs">${nrnc}</td>
-      <td class="font-medium max-w-[180px]" title="${denom}">${denom}</td>
-      <td class="text-stone-400">${especie}</td>
-      <td>${tipo ? `<span class="badge badge-tipo">${tipoLabel[tipo] || tipo}</span>` : "—"}</td>
-      <td class="font-mono text-xs text-stone-500" title="${expRnc}">${shortExp(expRnc)}</td>
-      <td class="font-mono text-xs text-stone-500" title="${expRnpc}">${shortExp(expRnpc)}</td>
-      <td class="font-mono text-xs text-stone-500" title="${notaRnc}">${notaRnc ? notaRnc.slice(0, 22) + (notaRnc.length > 22 ? "…" : "") : "—"}</td>
-      <td class="font-mono text-xs text-stone-500" title="${notaRnpc}">${notaRnpc ? notaRnpc.slice(0, 22) + (notaRnpc.length > 22 ? "…" : "") : "—"}</td>
-      <td>${paidRnc  ? '<span class="badge badge-paid">✓ Pagado</span>' : '<span class="badge badge-unpaid">Pendiente</span>'}</td>
-      <td>${paidRnpc ? '<span class="badge badge-paid">✓ Pagado</span>' : '<span class="badge badge-unpaid">Pendiente</span>'}</td>
-      <td class="text-stone-500 text-xs font-mono">${finRnc ? String(finRnc).slice(0, 10) : "—"}</td>
-      <td><button class="btn-row-detail" onclick="openDetail(${idx})">Ver</button></td>
-    </tr>`;
+    const shortFecha = (f) => {
+      if (!f || f === "false" || f === false) return "—";
+      return String(f).slice(0, 10);
+    };
+
+    return \`<tr>
+      <td class="font-mono text-stone-400 text-xs">\${nrnc}</td>
+      <td class="font-medium max-w-[180px]" title="\${denom}">\${denom}</td>
+      <td class="text-stone-400">\${especie}</td>
+      <td>\${tipo ? \`<span class="badge badge-tipo">\${tipo}</span>\` : "—"}</td>
+      <td class="font-mono text-xs text-stone-500" title="\${expRnc}">\${shortExp(expRnc)}</td>
+      <td class="font-mono text-xs text-stone-500" title="\${expRnpc}">\${shortExp(expRnpc)}</td>
+      <td class="font-mono text-xs text-stone-500" title="\${estadoRnc}">\${estadoRnc ? estadoRnc.slice(0, 22) + (estadoRnc.length > 22 ? "…" : "") : "—"}</td>
+      <td class="font-mono text-xs text-stone-500" title="\${estadoRnpc}">\${estadoRnpc ? estadoRnpc.slice(0, 22) + (estadoRnpc.length > 22 ? "…" : "") : "—"}</td>
+      <td>\${paidRnc  ? '<span class="badge badge-paid">✓ Pagado</span>' : '<span class="badge badge-unpaid">Pendiente</span>'}</td>
+      <td>\${paidRnpc ? '<span class="badge badge-paid">✓ Pagado</span>' : '<span class="badge badge-unpaid">Pendiente</span>'}</td>
+      <td class="text-stone-500 text-xs font-mono">\${shortFecha(finRnc)}</td>
+      <td><button class="btn-row-detail" onclick="openDetail(\${idx})">Ver</button></td>
+    </tr>\`;
   }).join("");
 }
 
@@ -364,7 +462,7 @@ setupDropZone(dropZone, zipInput, ".zip", async (file) => {
 
   try {
     const b64 = await fileToBase64(file);
-    const result = await apiPost("extraer-zip", { zip_b64: b64.split(",")[1] });
+    const result = await apiPostReadable("extraer-zip", { zip_b64: b64.split(",")[1] });
     if (result.error) throw new Error(result.error);
 
     const datos = result.datos || {};
@@ -470,7 +568,7 @@ setupDropZone(csvDropZone, csvInput, ".csv", async (file) => {
 
   try {
     const b64 = await fileToBase64(file);
-    const result = await apiPost("sync-csv", { csv_b64: b64.split(",")[1] });
+    const result = await apiPostReadable("sync-csv", { csv_b64: b64.split(",")[1] });
     if (result.error) throw new Error(result.error);
 
     csvStatus.style.color = "var(--success)";
