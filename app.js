@@ -1,4 +1,4 @@
-/**+
+/**
  * INASE · Gestión de Variedades
  * Frontend SPA — GitHub Pages
  *
@@ -327,7 +327,7 @@ function renderTable(rows) {
     const shortExp = (exp) => {
       if (!exp || exp === "false" || exp === false) return "—";
       const m = String(exp).match(/EX-(\d{4})-(\d+)/);
-      return m ? \`EX-\${m[1]}-\${m[2]}\` : String(exp).slice(0, 24);
+      return m ? `EX-${m[1]}-${m[2]}` : String(exp).slice(0, 24);
     };
 
     const shortFecha = (f) => {
@@ -335,20 +335,20 @@ function renderTable(rows) {
       return String(f).slice(0, 10);
     };
 
-    return \`<tr>
-      <td class="font-mono text-stone-400 text-xs">\${nrnc}</td>
-      <td class="font-medium max-w-[180px]" title="\${denom}">\${denom}</td>
-      <td class="text-stone-400">\${especie}</td>
-      <td>\${tipo ? \`<span class="badge badge-tipo">\${tipo}</span>\` : "—"}</td>
-      <td class="font-mono text-xs text-stone-500" title="\${expRnc}">\${shortExp(expRnc)}</td>
-      <td class="font-mono text-xs text-stone-500" title="\${expRnpc}">\${shortExp(expRnpc)}</td>
-      <td class="font-mono text-xs text-stone-500" title="\${estadoRnc}">\${estadoRnc ? estadoRnc.slice(0, 22) + (estadoRnc.length > 22 ? "…" : "") : "—"}</td>
-      <td class="font-mono text-xs text-stone-500" title="\${estadoRnpc}">\${estadoRnpc ? estadoRnpc.slice(0, 22) + (estadoRnpc.length > 22 ? "…" : "") : "—"}</td>
-      <td>\${paidRnc  ? '<span class="badge badge-paid">✓ Pagado</span>' : '<span class="badge badge-unpaid">Pendiente</span>'}</td>
-      <td>\${paidRnpc ? '<span class="badge badge-paid">✓ Pagado</span>' : '<span class="badge badge-unpaid">Pendiente</span>'}</td>
-      <td class="text-stone-500 text-xs font-mono">\${shortFecha(finRnc)}</td>
-      <td><button class="btn-row-detail" onclick="openDetail(\${idx})">Ver</button></td>
-    </tr>\`;
+    return `<tr>
+      <td class="font-mono text-stone-400 text-xs">${nrnc}</td>
+      <td class="font-medium max-w-[180px]" title="${denom}">${denom}</td>
+      <td class="text-stone-400">${especie}</td>
+      <td>${tipo ? `<span class="badge badge-tipo">${tipo}</span>` : "—"}</td>
+      <td class="font-mono text-xs text-stone-500" title="${expRnc}">${shortExp(expRnc)}</td>
+      <td class="font-mono text-xs text-stone-500" title="${expRnpc}">${shortExp(expRnpc)}</td>
+      <td class="font-mono text-xs text-stone-500" title="${estadoRnc}">${estadoRnc ? estadoRnc.slice(0, 22) + (estadoRnc.length > 22 ? "…" : "") : "—"}</td>
+      <td class="font-mono text-xs text-stone-500" title="${estadoRnpc}">${estadoRnpc ? estadoRnpc.slice(0, 22) + (estadoRnpc.length > 22 ? "…" : "") : "—"}</td>
+      <td>${paidRnc  ? '<span class="badge badge-paid">✓ Pagado</span>' : '<span class="badge badge-unpaid">Pendiente</span>'}</td>
+      <td>${paidRnpc ? '<span class="badge badge-paid">✓ Pagado</span>' : '<span class="badge badge-unpaid">Pendiente</span>'}</td>
+      <td class="text-stone-500 text-xs font-mono">${shortFecha(finRnc)}</td>
+      <td><button class="btn-row-detail" onclick="openDetail(${idx})">Ver</button></td>
+    </tr>`;
   }).join("");
 }
 
