@@ -8,7 +8,7 @@
  */
 const CONFIG = {
   // 1. Tu Web App URL de Apps Script (terminada en /exec)
-  API_URL: "43163248778-qri63io046lkhtcj0h3fu6lj0ogpkbid.apps.googleusercontent.com",
+  API_URL: "https://script.google.com/macros/s/AKfycbxeTTfRDS8Lk9E828qqk5y1_yjMDciZyXBVqPdBhLniZ3iqj-VFmF4BuxQKrUaFR8o/exec",
 
   // 2. Tu Client ID de Google Cloud (OAuth 2.0)
   GOOGLE_CLIENT_ID: "43163248778-qri63io046lkhtcj0h3fu6lj0ogpkbid.apps.googleusercontent.com",
