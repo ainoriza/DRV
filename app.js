@@ -244,14 +244,14 @@ function renderTable(rows) {
     const tipo    = String(r.tipo_tramite || r.t || "");
     const expRnc  = r.exp_rnc || "";
     const expRnpc = r.exp_rnpc || "";
-    const notaRnc  = r.nota_rnc || "";
-    const notaRnpc = r.nota_rnpc || "";
+    const notaRnc  = r.nota_rnc  ? String(r.nota_rnc)  : "";
+    const notaRnpc = r.nota_rnpc ? String(r.nota_rnpc) : "";
     const finRnc   = r.f_in_rnc || "";
     const estadoRnc  = r.estado_rnc || "";
     const estadoRnpc = r.estado_rnpc || "";
 
-    const paidRnc  = notaRnc  && paid.has(notaRnc.trim());
-    const paidRnpc = notaRnpc && paid.has(notaRnpc.trim());
+    const paidRnc  = notaRnc  && paid.has(String(notaRnc).trim());
+    const paidRnpc = notaRnpc && paid.has(String(notaRnpc).trim());
 
     const shortExp = (exp) => {
       if (!exp || exp === "false" || exp === false) return "—";
@@ -295,8 +295,8 @@ function openDetail(idx) {
   const r = state.filteredRows[idx];
   if (!r) return;
   const paid = buildPaidSet();
-  const notaRnc  = r.nota_rnc || r["NOTA RNC"] || "";
-  const notaRnpc = r.nota_rnpc || r["NOTA RNPC"] || "";
+  const notaRnc  = String(r.nota_rnc || "");
+  const notaRnpc = String(r.nota_rnpc || "");
 
   const skip = ["_user_email"];
   const rows = Object.entries(r)
@@ -311,8 +311,8 @@ function openDetail(idx) {
     `${r.denominacion || r.Denominacion || "Expediente"} · ${r.nrnc || r.NRNC || ""}`;
   document.getElementById("modal-body").innerHTML = `
     <div class="flex gap-3 mb-4">
-      ${notaRnc  ? (paid.has(notaRnc.trim())  ? '<span class="badge badge-paid">RNC Pagado</span>'  : '<span class="badge badge-unpaid">RNC Sin Pago</span>')  : ""}
-      ${notaRnpc ? (paid.has(notaRnpc.trim()) ? '<span class="badge badge-paid">RNPC Pagado</span>' : '<span class="badge badge-unpaid">RNPC Sin Pago</span>') : ""}
+      ${notaRnc  ? (paid.has(String(notaRnc).trim())  ? '<span class="badge badge-paid">RNC Pagado</span>'  : '<span class="badge badge-unpaid">RNC Sin Pago</span>')  : ""}
+      ${notaRnpc ? (paid.has(String(notaRnpc).trim()) ? '<span class="badge badge-paid">RNPC Pagado</span>' : '<span class="badge badge-unpaid">RNPC Sin Pago</span>') : ""}
     </div>
     ${rows}
   `;
