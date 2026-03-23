@@ -8,7 +8,7 @@
  */
 const CONFIG = {
   // 1. Tu Web App URL de Apps Script (terminada en /exec)
-  API_URL: "https://script.google.com/macros/s/AKfycbzA9jeF2DnSRj1Bhfu24ZrB5BquZ5bGpQns4Z_H6T3B9IxSg8cAjAl8KtTqjvbDOav8/exec",
+  API_URL: "https://inase-proxy.ainoriza.workers.dev",
 
   // 2. Tu Client ID de Google Cloud (OAuth 2.0)
   GOOGLE_CLIENT_ID: "43163248778-qri63io046lkhtcj0h3fu6lj0ogpkbid.apps.googleusercontent.com",
@@ -96,105 +96,34 @@ document.getElementById("logout-btn").addEventListener("click", () => {
 
 /* ══════════════════════════════════════════════
    API HELPERS
-   
-   GAS (Apps Script) hace una redirección 302 que
-   el browser bloquea con fetch normal.
-   
-   ✅ GET  → JSONP  (evita CORS completamente)
-   ✅ POST → fetch con mode:"no-cors" + FormData
-             El backend recibe e.parameter en doPost
+   Ahora todo va via Cloudflare Worker (proxy con CORS)
+   → fetch normal para GET y POST
 ══════════════════════════════════════════════ */
 
-/**
- * GET via JSONP — funciona sin CORS con GAS.
- * Requiere que tu doGet en GAS soporte ?callback=xxx
- * (ver instrucción abajo si aún no lo tiene).
- */
-function apiGet(path, params = {}) {
-  return new Promise((resolve, reject) => {
-    const cbName = "_gasCallback_" + Date.now();
-    const url = new URL(CONFIG.API_URL);
-    url.searchParams.set("path", path);
-    url.searchParams.set("callback", cbName);
-    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-
-    const script = document.createElement("script");
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error("Timeout — verificá que la API esté publicada como 'Cualquier persona'"));
-    }, 15000);
-
-    window[cbName] = (data) => {
-      cleanup();
-      resolve(data);
-    };
-
-    function cleanup() {
-      clearTimeout(timer);
-      delete window[cbName];
-      if (script.parentNode) script.parentNode.removeChild(script);
-    }
-
-    script.onerror = () => { cleanup(); reject(new Error("Error cargando script JSONP")); };
-    script.src = url.toString();
-    document.head.appendChild(script);
-  });
+async function apiGet(path, params = {}) {
+  const url = new URL(CONFIG.API_URL);
+  url.searchParams.set("path", path);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
 }
 
-/**
- * POST via fetch con mode:"no-cors".
- * Con no-cors la respuesta es "opaque" (no podemos leerla),
- * así que hacemos un GET de confirmación inmediatamente después.
- * Para operaciones que necesiten respuesta usá apiPostReadable().
- */
 async function apiPost(path, body = {}) {
   const url = new URL(CONFIG.API_URL);
   url.searchParams.set("path", path);
-
   const payload = { ...body, _user_email: state.user?.email };
-
-  // Enviamos como application/x-www-form-urlencoded (más compatible con GAS)
-  // GAS lo recibe en e.parameter
-  const formBody = Object.entries(payload)
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(typeof v === "object" ? JSON.stringify(v) : v)}`)
-    .join("&");
-
-  await fetch(url.toString(), {
+  const res = await fetch(url.toString(), {
     method: "POST",
-    mode: "no-cors",           // Evita el error CORS — la respuesta será opaque
-    redirect: "follow",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: formBody,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   });
-
-  // Como no podemos leer la respuesta opaque, devolvemos ok optimista
-  return { ok: true };
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
 }
 
-/**
- * POST con cuerpo JSON y lectura de respuesta.
- * Requiere que en GAS hayas agregado los headers CORS en doPost
- * (ver instrucciones en README).
- * Usalo para extraer-zip y sync-csv donde necesitás leer la respuesta.
- */
-async function apiPostReadable(path, body = {}) {
-  const url = new URL(CONFIG.API_URL);
-  url.searchParams.set("path", path);
-  const payload = { ...body, _user_email: state.user?.email };
-
-  try {
-    const res = await fetch(url.toString(), {
-      method: "POST",
-      redirect: "follow",
-      headers: { "Content-Type": "text/plain" }, // text/plain evita preflight OPTIONS
-      body: JSON.stringify(payload),
-    });
-    return res.json();
-  } catch(err) {
-    // Si sigue fallando por CORS, notificamos claramente
-    throw new Error("CORS bloqueado en POST. Verificá que la Web App tenga acceso 'Cualquier persona' y agregá los headers CORS en tu doPost de GAS (ver README).");
-  }
-}
+// Alias — ahora todos los POST pueden leer la respuesta
+const apiPostReadable = apiPost;
 
 /* ══════════════════════════════════════════════
    DASHBOARD
